@@ -10,6 +10,7 @@ import sys
 from itertools import chain
 from string import punctuation
 import nltk
+from googletrans import Translator
 nltk.download('punkt')
 from nltk.tokenize import sent_tokenize
 import pandas as pd
@@ -23,6 +24,7 @@ from transformers import (
     T5Tokenizer,
     get_linear_schedule_with_warmup
 )
+from elt import translit
 import pandas as pd
 import pickle
 import os
@@ -48,7 +50,7 @@ from nltk.data import find
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import gensim
-import faiss
+# import faiss
 
 
 def most(l):
@@ -94,8 +96,24 @@ for file in os.listdir("./snli_1.0"):
 
         val_df['input'] = [concat(i['sentence1'], i['sentence2'])for i in data][:1000]
         val_df['output'] = [most(i['annotator_labels']) for i in data][:1000]
-    
-    if file == "snli_1.0_test_format.jsonl":
+    if file == "snli_1.0_test_format.jsonl" and sys.argv[1]:
+        with open("demo.txt", "r") as f:
+        	in1 = f.readline().strip("\n")
+        	in2 = f.readline().strip("\n")
+        	to_hindi = translit('hindi')
+        	print(in1)
+        	print(in2)
+ #       	print(to_hindi.convert([in2]))
+        	o1 = to_hindi.convert([in1])
+        	o2 = to_hindi.convert([in2])
+        	translator = Translator()
+        	i1 = translator.translate(o1[0], src="hi", dest="en")
+        	i2 = translator.translate(o2[0], src="hi", dest="en")
+        	print(i1.text, i2.text)
+        	test_df['input'] = [concat(i1.text, i2.text)]
+        	test_df['output'] = ['neutral']
+
+    elif file == "snli_1.0_test_format.jsonl":
         f = open('./snli_1.0/'+file)
         data = json.load(f)
         f.close()
@@ -167,8 +185,18 @@ train_params = dict(
 
 model = T5FineTuner(args, train_df, val_df)
 trainer = pl.Trainer(**train_params)
-trainer.fit(model)
+from transformers import T5ForConditionalGeneration, T5Tokenizer
 
+if(sys.argv[1] == "train"):
+	trainer.fit(model)
+elif(sys.argv[1] == "test"):
+    ckpt = torch.load('output/epoch=11.ckpt')
+    model.load_state_dict(ckpt['state_dict'])
+    model = model.to(torch.device("cuda" if torch.cuda.is_available else 'cpu'))
+elif(sys.argv[1] == "demo"):
+    ckpt = torch.load('output/epoch=11.ckpt')
+    model.load_state_dict(ckpt['state_dict'])
+    model = model.to(torch.device("cuda" if torch.cuda.is_available else 'cpu'))
 import textwrap
 from tqdm.auto import tqdm
 from sklearn import metrics
@@ -186,11 +214,19 @@ for batch in tqdm(loader):
 
     dec = [tokenizer.decode(ids,skip_special_tokens=True, clean_up_tokenization_spaces=True) for ids in outs]
     target = [tokenizer.decode(ids,skip_special_tokens=True, clean_up_tokenization_spaces=True) for ids in batch["target_ids"]]
-    
     outputs.extend(dec)
     targets.extend(target)
-
+#    print(dec)
+#    print(target)
+    if(dec[0] == "false"):
+    	print("output: " + str("contradictory"))
+    elif(dec[0] == "true"):
+    	print("output: " + str("entailment"))
+    else:
+    	print("output: " + str("neutral"))
 metrics.accuracy_score(targets, outputs)
-print(metrics.classification_report(targets, outputs))
+
+if(sys.argv[1] != "demo"):
+    print(metrics.classification_report(targets, outputs))
 
     

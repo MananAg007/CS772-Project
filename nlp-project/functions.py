@@ -63,10 +63,8 @@ class T5FineTuner(pl.LightningModule):
   def __init__(self, hparams, train_df, val_df):
     super(T5FineTuner, self).__init__()
     self.hparams_ = hparams
-
     self.train_df = train_df
     self.val_df = val_df
-    
     self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
     self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
   
@@ -83,22 +81,17 @@ class T5FineTuner(pl.LightningModule):
         decoder_attention_mask=decoder_attention_mask,
         labels=labels,
     )
-
   def _step(self, batch):
     labels = batch["target_ids"]
     labels[labels[:, :] == self.tokenizer.pad_token_id] = -100
-
     outputs = self(
         input_ids=batch["source_ids"],
         attention_mask=batch["source_mask"],
         labels=labels,
         decoder_attention_mask=batch['target_mask']
     )
-
     loss = outputs[0]
-
     return loss
-
   def training_step(self, batch, batch_idx):
     loss = self._step(batch)
 
